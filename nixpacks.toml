@@ -1,0 +1,14 @@
+[phases.setup]
+nixPkgs = ["python313"]
+
+[phases.install]
+
+cmds = [
+  "python -m venv /opt/venv",
+  ". /opt/venv/bin/activate",
+  "pip install --upgrade pip",
+  "pip install -r requirements.txt"
+]
+
+[start]
+cmd = ". /opt/venv/bin/activate && python /app/run_llm.py"
