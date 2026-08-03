@@ -4,7 +4,10 @@ nixPkgs = [
   "git",
   "cmake",
   "gcc",
-  "gnumake"
+  "gnumake",
+  "pkg-config",
+  "openssl",
+  "curl"
 ]
 
 [phases.install]
@@ -13,6 +16,13 @@ cmds = [
   ". /opt/venv/bin/activate",
   "pip install --upgrade pip",
   "pip install -r requirements.txt"
+]
+
+[phases.build]
+cmds = [
+  "if [ ! -d /app/llama.cpp ]; then git clone https://github.com/ggml-org/llama.cpp.git /app/llama.cpp; fi",
+  "cd /app/llama.cpp && cmake -B build -DCMAKE_BUILD_TYPE=Release",
+  "cd /app/llama.cpp && cmake --build build --config Release -j$(nproc)"
 ]
 
 [start]
