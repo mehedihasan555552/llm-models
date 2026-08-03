@@ -1,8 +1,13 @@
 [phases.setup]
-nixPkgs = ["python313"]
+nixPkgs = [
+  "python313",
+  "git",
+  "cmake",
+  "gcc",
+  "gnumake"
+]
 
 [phases.install]
-
 cmds = [
   "python -m venv /opt/venv",
   ". /opt/venv/bin/activate",
