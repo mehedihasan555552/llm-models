@@ -36,8 +36,9 @@ A Nixpacks-deployable `llama.cpp` server, currently configured to serve
 | `FLASH_ATTN` | `on` | `on` / `off` / `auto`. Kept `on` by default because quantized `CACHE_TYPE_V` requires flash attention to actually be active — `auto` can silently disable it on some builds and then fail. |
 | `CACHE_TYPE_K` / `CACHE_TYPE_V` | `q8_0` | KV cache quantization (lower = faster/less RAM, `f16` = highest quality). If you set `FLASH_ATTN=off`, set these back to `f16` too. |
 | `LOAD_MODE` | _(unset → mmap)_ | `none` / `mmap` / `mlock` / `mmap+mlock` / `dio`. Set to `mlock` to lock the model in RAM (needs enough memory). Replaces the deprecated `--mlock` flag. |
+| `SERVER_LOG_VERBOSITY` | `1` | llama-server's own `--verbosity` (`0` generic, `1` errors, `2` +warnings, `3` +info/per-request timing, `4` trace, `5` debug). Default `1` silences the per-request `get_availabl` / `launch_slot_` / `print_timing` / `release` spam you get at the default `3`. Bump to `2` or `3` temporarily when you need per-request slot/timing diagnostics. |
+| `LOG_LEVEL` | `INFO` | Our own launcher's log level. Even at a higher `SERVER_LOG_VERBOSITY`, any llama-server line that isn't a warning/error is logged at `DEBUG` on our side, so it stays hidden unless you also set `LOG_LEVEL=DEBUG`. |
 | `MAX_RESTARTS` | `10` | Give up after this many consecutive crash-restarts (`0` = unlimited) |
-| `LOG_LEVEL` | `INFO` | Python log level |
 
 Tune `N_PARALLEL`, `CTX_SIZE`, and thread counts to your host's CPU/RAM —
 the defaults are conservative for a small VM running a 0.5B model.

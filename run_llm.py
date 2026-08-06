@@ -18,6 +18,7 @@ from __future__ import annotations
 import logging
 import logging.handlers
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -64,6 +65,13 @@ CACHE_TYPE_V = os.environ.get("CACHE_TYPE_V", "q8_0")
 # Leave LOAD_MODE unset (default "") to use the server's own default (mmap).
 # Set to one of: none | mmap | mlock | mmap+mlock | dio
 LOAD_MODE = os.environ.get("LOAD_MODE", "")
+
+# llama-server's own log verbosity. Values: 0=generic 1=error 2=warning
+# 3=info(default) 4=trace 5=debug. The default (3) prints a get_availabl /
+# launch_slot_ / print_timing / release block for EVERY request, which is
+# pure noise once you trust the deployment. Default here to 1 (errors only)
+# -- bump to 2 temporarily if you need per-request slot/timing diagnostics.
+SERVER_VERBOSITY = int(os.environ.get("SERVER_LOG_VERBOSITY", "1"))
 
 MAX_RESTARTS = int(os.environ.get("MAX_RESTARTS", 10))      # 0 = unlimited
 RESTART_BACKOFF_BASE = float(os.environ.get("RESTART_BACKOFF_BASE", 2.0))
@@ -218,6 +226,7 @@ def build_server_cmd() -> list[str]:
         "--cache-type-k", CACHE_TYPE_K,
         "--cache-type-v", CACHE_TYPE_V,
         "--flash-attn", FLASH_ATTN,
+        "--verbosity", str(SERVER_VERBOSITY),
         "--metrics",
     ]
     if LOAD_MODE:
@@ -252,10 +261,29 @@ def _handle_signal(signum, _frame):
         _child_proc.terminate()
 
 
+_LLAMA_LOG_LEVEL_RE = re.compile(r"^\S+\s+([IWEDT])\s")
+_LLAMA_LEVEL_MAP = {
+    "E": logging.ERROR,
+    "W": logging.WARNING,
+    "I": logging.DEBUG,   # routine per-request slot/timing chatter -> hidden by default
+    "D": logging.DEBUG,
+    "T": logging.DEBUG,
+}
+
+
 def _stream_child_output(proc: subprocess.Popen) -> None:
+    """Forward llama-server's stdout into our logger, downgrading its routine
+    per-request INFO lines (slot selection, timing, release) to DEBUG so they
+    don't spam the console/file at the default log level. Warnings and errors
+    always pass through. This is a defense-in-depth filter on top of
+    --verbosity; it keeps things quiet even if a future llama.cpp build
+    changes what --verbosity suppresses."""
     assert proc.stdout is not None
     for line in proc.stdout:
-        log.info("[llama-server] %s", line.rstrip())
+        line = line.rstrip()
+        match = _LLAMA_LOG_LEVEL_RE.match(line)
+        level = _LLAMA_LEVEL_MAP.get(match.group(1), logging.INFO) if match else logging.INFO
+        log.log(level, "[llama-server] %s", line)
 
 
 def serve_forever() -> None:
@@ -329,6 +357,7 @@ def main() -> int:
     log.info("Threads     : %s (batch: %s)", THREADS, THREADS_BATCH)
     log.info("Context     : %s | batch=%s ubatch=%s parallel=%s", CTX_SIZE, BATCH_SIZE, UBATCH_SIZE, N_PARALLEL)
     log.info("Flash-Attn  : %s | KV cache: k=%s v=%s | load-mode=%s", FLASH_ATTN, CACHE_TYPE_K, CACHE_TYPE_V, LOAD_MODE or "default(mmap)")
+    log.info("Server verbosity: %s (1=errors only, 2=+warnings, 3=+info/timing)", SERVER_VERBOSITY)
     log.info("Log file    : %s", LOG_FILE)
 
     try:
