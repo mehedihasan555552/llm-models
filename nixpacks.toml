@@ -1,3 +1,6 @@
+[variables]
+PYTHONUNBUFFERED = "1"
+
 [phases.setup]
 nixPkgs = [
   "python313",
@@ -13,17 +16,21 @@ nixPkgs = [
 [phases.install]
 cmds = [
   "python -m venv /opt/venv",
-  ". /opt/venv/bin/activate",
-  "pip install --upgrade pip",
-  "pip install -r requirements.txt"
+  ". /opt/venv/bin/activate && pip install --upgrade pip",
+  ". /opt/venv/bin/activate && pip install -r requirements.txt"
 ]
 
 [phases.build]
 cmds = [
-  "if [ ! -d /app/llama.cpp ]; then git clone https://github.com/ggml-org/llama.cpp.git /app/llama.cpp; fi",
-  "cd /app/llama.cpp && cmake -B build -DCMAKE_BUILD_TYPE=Release",
-  "cd /app/llama.cpp && cmake --build build --config Release -j$(nproc)"
+  "mkdir -p /app/logs /app/models",
+  "if [ ! -d /app/llama.cpp ]; then git clone --depth 1 https://github.com/ggml-org/llama.cpp.git /app/llama.cpp; fi",
+  "if [ ! -f /app/llama.cpp/build/bin/llama-server ]; then cd /app/llama.cpp && cmake -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build --config Release -j$(nproc); fi"
 ]
+# NOTE: intentionally NOT using Nixpacks `cacheDirectories` here -- cached
+# directories are stripped from the final image after the phase runs, which
+# would delete the compiled llama-server binary this app needs at runtime.
+# The `if [ ! -f ... ]` guards above still make repeat builds in the same
+# build environment (or platforms that reuse Docker layers) skip work.
 
 [start]
 cmd = ". /opt/venv/bin/activate && python /app/run_llm.py"
