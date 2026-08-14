@@ -24,7 +24,7 @@ cmds = [
 cmds = [
   "mkdir -p /app/logs /app/models",
   "if [ ! -d /app/llama.cpp ]; then git clone --depth 1 https://github.com/ggml-org/llama.cpp.git /app/llama.cpp; fi",
-  "if [ ! -f /app/llama.cpp/build/bin/llama-server ]; then cd /app/llama.cpp && cmake -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build --config Release -j$(nproc); fi"
+  "if [ ! -f /app/llama.cpp/build/bin/llama-server ]; then cd /app/llama.cpp && cmake -B build -DCMAKE_BUILD_TYPE=Release -DGGML_NATIVE=ON && cmake --build build --config Release -j$(nproc); fi"
 ]
 # NOTE: intentionally NOT using Nixpacks `cacheDirectories` here -- cached
 # directories are stripped from the final image after the phase runs, which

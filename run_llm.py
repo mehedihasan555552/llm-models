@@ -30,7 +30,7 @@ from pathlib import Path
 # Configuration (env-overridable so the same image works across environments)
 # --------------------------------------------------------------------------- #
 
-ROOT = Path(os.environ.get("APP_ROOT", "/app"))
+ROOT = Path(os.environ.get("APP_ROOT", Path(__file__).parent.resolve()))
 LLAMA_DIR = ROOT / "llama.cpp"
 LLAMA_BIN = LLAMA_DIR / "build" / "bin" / "llama-server"
 
@@ -41,7 +41,15 @@ HOST = os.environ.get("HOST", "0.0.0.0")
 PORT = int(os.environ.get("PORT", 8080))
 
 CPU_COUNT = os.cpu_count() or 4
-THREADS = int(os.environ.get("THREADS", CPU_COUNT))
+# Detect physical cores for optimal token generation latency (prevents hyperthreading synchronization overhead)
+PHYSICAL_CORES = CPU_COUNT
+try:
+    import psutil
+    PHYSICAL_CORES = psutil.cpu_count(logical=False) or CPU_COUNT
+except Exception:
+    pass
+
+THREADS = int(os.environ.get("THREADS", min(PHYSICAL_CORES, 8)))
 THREADS_BATCH = int(os.environ.get("THREADS_BATCH", CPU_COUNT))
 CTX_SIZE = int(os.environ.get("CTX_SIZE", 4096))
 BATCH_SIZE = int(os.environ.get("BATCH_SIZE", 2048))
@@ -154,7 +162,7 @@ def ensure_llama_cpp() -> None:
         )
 
     run_streamed(
-        ["cmake", "-B", "build", "-DCMAKE_BUILD_TYPE=Release"],
+        ["cmake", "-B", "build", "-DCMAKE_BUILD_TYPE=Release", "-DGGML_NATIVE=ON"],
         cwd=LLAMA_DIR,
         log_prefix="cmake-config",
     )
@@ -223,6 +231,7 @@ def build_server_cmd() -> list[str]:
         "-ub", str(UBATCH_SIZE),
         "-np", str(N_PARALLEL),
         "--cont-batching",
+        "--jinja",
         "--cache-type-k", CACHE_TYPE_K,
         "--cache-type-v", CACHE_TYPE_V,
         "--flash-attn", FLASH_ATTN,
@@ -308,6 +317,11 @@ def serve_forever() -> None:
             bufsize=1,
         )
 
+        if _shutdown_requested.is_set():
+            _child_proc.terminate()
+            log.info("Shutdown requested during spawn; process terminated.")
+            return
+
         reader = threading.Thread(
             target=_stream_child_output, args=(_child_proc,), daemon=True
         )
@@ -338,7 +352,7 @@ def serve_forever() -> None:
 
         backoff = min(RESTART_BACKOFF_BASE ** restarts, RESTART_BACKOFF_MAX)
         log.info("Restarting in %.1fs ...", backoff)
-        time.sleep(backoff)
+        _shutdown_requested.wait(timeout=backoff)
 
 
 # --------------------------------------------------------------------------- #
